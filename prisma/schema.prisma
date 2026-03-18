@@ -1,0 +1,172 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  role      String   @default("student") // "student" | "teacher" | "admin"
+  avatar    String?
+  bio       String?
+  password  String?
+  createdAt DateTime @default(now())
+
+  progress       Progress[]
+  attempts       QuizAttempt[]
+  enrollments    Enrollment[]
+  discussions    Discussion[]
+  comments       Comment[]
+  certificates   Certificate[]
+  notifications  Notification[]
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  teacherId   String
+  thumbnail   String?
+  level       String   @default("Beginner") // "Beginner" | "Intermediate" | "Advanced"
+  category    String?
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  videos      Video[]
+  enrollments Enrollment[]
+  liveClasses LiveClass[]
+}
+
+model Video {
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title    String
+  videoUrl String
+  order    Int    @default(0)
+
+  quiz     Quiz?
+  progress Progress[]
+}
+
+model Quiz {
+  id      String @id @default(uuid())
+  videoId String @unique
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+model Question {
+  id           String @id @default(uuid())
+  quizId       String
+  quiz         Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  text         String
+  options      String[]
+  correctIndex Int
+  order        Int    @default(0)
+}
+
+model QuizAttempt {
+  id        String   @id @default(uuid())
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  score     Int
+  passed    Boolean
+  answers   Int[]
+  createdAt DateTime @default(now())
+}
+
+model Progress {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  videoId    String
+  video      Video    @relation(fields: [videoId], references: [id])
+  completed  Boolean  @default(false)
+  watchedSec Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, videoId])
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id])
+  enrolledAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model Certificate {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  courseId    String
+  title       String
+  issuedAt    DateTime @default(now())
+}
+
+model LiveClass {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  scheduledAt DateTime
+  duration    Int      @default(60) // minutes
+  roomName    String   @unique // LiveKit room identifier
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Discussion {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  content   String
+  category  String    @default("General Discussion")
+  tags      String[]
+  isPinned  Boolean   @default(false)
+  isSolved  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  comments  Comment[]
+}
+
+model Comment {
+  id           String     @id @default(uuid())
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  content      String
+  createdAt    DateTime   @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+
