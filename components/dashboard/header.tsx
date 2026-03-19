@@ -14,7 +14,9 @@ import { cn } from "@/lib/utils"
 
 export function DashboardHeader() {
   const { isFocusMode, toggleFocusMode } = useFocusMode()
-  const { role } = useUser()
+  const { profile, isLoading } = useUser()
+  
+  const role = profile?.role || "student"
 
   return (
     <>
@@ -24,7 +26,7 @@ export function DashboardHeader() {
           <div className="flex items-center gap-2">
             <Focus className="h-4 w-4" />
             <span className="font-medium">Focus Mode is ON</span>
-            <span className="opacity-70">— Notifications and distractions are hidden</span>
+            <span className="opacity-70">- Notifications and distractions are hidden</span>
           </div>
           <Button
             variant="ghost"
@@ -54,17 +56,21 @@ export function DashboardHeader() {
         </div>
 
         {/* Role Badge */}
-        <Badge
-          variant="secondary"
-          className={cn(
-            "hidden sm:flex capitalize font-medium",
-            role === "teacher"
-              ? "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
-              : "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
-          )}
-        >
-          {role === "teacher" ? "Instructor" : "Student"}
-        </Badge>
+        {!isLoading && (
+          <Badge
+            variant="secondary"
+            className={cn(
+              "hidden sm:flex capitalize font-medium",
+              role === "teacher"
+                ? "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
+                : role === "admin"
+                ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                : "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+            )}
+          >
+            {role === "teacher" ? "Instructor" : role === "admin" ? "Admin" : "Student"}
+          </Badge>
+        )}
 
         {/* Focus Mode Toggle */}
         <Button

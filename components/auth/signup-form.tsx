@@ -10,9 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
-import { Eye, EyeOff, AlertCircle, Check, GraduationCap, BookOpen } from "lucide-react"
-import { useUser, type UserRole } from "@/lib/user-context"
-import { cn } from "@/lib/utils"
+import { Eye, EyeOff, AlertCircle, Check } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 const passwordRequirements = [
   { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
@@ -21,20 +20,17 @@ const passwordRequirements = [
   { label: "One number", test: (p: string) => /\d/.test(p) },
 ]
 
-// Roles are removed from UI as users default to 'student' role.
-
 export function SignupForm() {
   const router = useRouter()
-  const { setUser } = useUser()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     terms: false,
-    role: "student" as UserRole,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -56,25 +52,66 @@ export function SignupForm() {
     setError("")
     if (!validateForm()) return
     setIsLoading(true)
+    
     try {
-      const res = await fetch("/api/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email }),
+      const supabase = createClient()
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+            `${window.location.origin}/dashboard`,
+          data: {
+            name: formData.name,
+            role: 'student',
+          },
+        },
       })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Failed to send OTP. Please try again.")
+
+      if (signUpError) {
+        setError(signUpError.message || "Failed to create account. Please try again.")
         setIsLoading(false)
         return
       }
 
-      setUser({ name: formData.name, email: formData.email, role: formData.role as UserRole })
-      router.push(`/verify-email?email=${encodeURIComponent(formData.email)}&role=${formData.role}`)
+      setSuccess(true)
     } catch {
       setError("Network error. Please check your connection and try again.")
       setIsLoading(false)
     }
+  }
+
+  if (success) {
+    return (
+      <div className="text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 mx-auto mb-4">
+          <Check className="h-6 w-6 text-green-600" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight mb-2">Check your email</h1>
+        <p className="text-muted-foreground mb-6">
+          We sent a confirmation link to{" "}
+          <span className="font-medium text-foreground">{formData.email}</span>.
+          Click the link to verify your account.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Didn&apos;t receive the email?{" "}
+          <button
+            onClick={() => {
+              setSuccess(false)
+              setIsLoading(false)
+            }}
+            className="font-medium text-foreground hover:underline"
+          >
+            Try again
+          </button>
+        </p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          <Link href="/login" className="font-medium text-foreground hover:underline">
+            Back to sign in
+          </Link>
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -92,8 +129,6 @@ export function SignupForm() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Role selection removed - defaulting to student */}
-
         <div className="space-y-2">
           <Label htmlFor="name">Full name</Label>
           <Input
@@ -176,7 +211,7 @@ export function SignupForm() {
 
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading ? <Spinner className="mr-2" /> : null}
-          {isLoading ? "Sending OTP..." : "Create account"}
+          {isLoading ? "Creating account..." : "Create account"}
         </Button>
       </form>
 

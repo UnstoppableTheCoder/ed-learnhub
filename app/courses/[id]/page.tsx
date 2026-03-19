@@ -1,4 +1,5 @@
 import { Metadata } from "next"
+import { notFound } from "next/navigation"
 import { Header } from "@/components/landing/header"
 import { Footer } from "@/components/landing/footer"
 import { CourseHero } from "@/components/courses/course-hero"
@@ -7,61 +8,103 @@ import { CourseInstructor } from "@/components/courses/course-instructor"
 import { CourseReviews } from "@/components/courses/course-reviews"
 import { CourseRequirements } from "@/components/courses/course-requirements"
 import { CourseEnrollCard } from "@/components/courses/course-enroll-card"
+import { createClient } from "@/lib/supabase/server"
 
 export const metadata: Metadata = {
   title: "Course Details - LearnHub",
   description: "Learn from industry experts",
 }
 
-const courseData = {
-  id: 1,
-  title: "Complete Web Development Bootcamp 2026",
-  subtitle: "Become a full-stack web developer with one comprehensive course. HTML, CSS, JavaScript, Node, React, PostgreSQL, and more!",
-  instructor: {
-    name: "Sarah Chen",
-    title: "Senior Software Engineer at Google",
-    avatar: "SC",
-    rating: 4.9,
-    students: 185000,
-    courses: 12,
-    bio: "Sarah is a senior software engineer with 10+ years of experience. She has worked at Google, Meta, and several startups. She's passionate about teaching and has helped over 185,000 students learn web development.",
-  },
-  rating: 4.9,
-  reviews: 12500,
-  students: 45200,
-  duration: "52 hours",
-  lessons: 380,
-  level: "Beginner",
-  price: 89.99,
-  originalPrice: 199.99,
-  lastUpdated: "February 2026",
-  language: "English",
-  features: [
-    "52 hours on-demand video",
-    "45 coding exercises",
-    "12 real-world projects",
-    "Certificate of completion",
-    "Lifetime access",
-    "Mobile and desktop access",
-  ],
-  requirements: [
-    "No programming experience needed",
-    "A computer with internet access",
-    "Willingness to learn and practice",
-  ],
-  whatYouWillLearn: [
-    "Build 12+ portfolio-ready web applications",
-    "Master HTML5, CSS3, and modern JavaScript (ES6+)",
-    "Create responsive, mobile-first websites",
-    "Work with React.js and Next.js frameworks",
-    "Build REST APIs with Node.js and Express",
-    "Use PostgreSQL and MongoDB databases",
-    "Deploy applications to the cloud",
-    "Implement authentication and security best practices",
-  ],
+async function getCourse(id: string) {
+  const supabase = await createClient()
+
+  const { data: course } = await supabase
+    .from("courses")
+    .select(`
+      *,
+      teacher:profiles!courses_teacher_id_fkey(
+        id,
+        name,
+        avatar,
+        bio,
+        title,
+        location
+      )
+    `)
+    .eq("id", id)
+    .eq("is_published", true)
+    .single()
+
+  if (!course) return null
+
+  // Get video count
+  const { count: videoCount } = await supabase
+    .from("videos")
+    .select("*", { count: "exact", head: true })
+    .eq("course_id", id)
+
+  // Get teacher's total students and courses
+  const { data: teacherCourses } = await supabase
+    .from("courses")
+    .select("students_count")
+    .eq("teacher_id", course.teacher?.id)
+    .eq("is_published", true)
+
+  const teacherTotalStudents = teacherCourses?.reduce((acc, c) => acc + (c.students_count || 0), 0) || 0
+  const teacherCourseCount = teacherCourses?.length || 0
+
+  return {
+    id: course.id,
+    title: course.title,
+    subtitle: course.subtitle || course.description,
+    instructor: {
+      name: course.teacher?.name || "Unknown",
+      title: course.teacher?.title || "Instructor",
+      avatar: course.teacher?.avatar || course.teacher?.name?.charAt(0) || "T",
+      rating: course.rating || 4.5,
+      students: teacherTotalStudents,
+      courses: teacherCourseCount,
+      bio: course.teacher?.bio || "Experienced instructor passionate about teaching.",
+    },
+    rating: course.rating || 0,
+    reviews: course.reviews_count || 0,
+    students: course.students_count || 0,
+    duration: course.duration || "N/A",
+    lessons: videoCount || 0,
+    level: course.level || "Beginner",
+    price: course.price || 0,
+    originalPrice: course.original_price || course.price || 0,
+    lastUpdated: new Date(course.updated_at).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    language: course.language || "English",
+    features: course.features || [
+      "Full lifetime access",
+      "Certificate of completion",
+      "Access on mobile and desktop",
+    ],
+    requirements: course.requirements || [
+      "No prior experience needed",
+      "A computer with internet access",
+    ],
+    whatYouWillLearn: course.what_you_will_learn || [
+      "Build real-world projects",
+      "Learn industry best practices",
+    ],
+    thumbnail: course.thumbnail,
+  }
 }
 
-export default function CourseDetailsPage() {
+export default async function CourseDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const courseData = await getCourse(id)
+
+  if (!courseData) {
+    notFound()
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -75,7 +118,7 @@ export default function CourseDetailsPage() {
                 requirements={courseData.requirements}
                 whatYouWillLearn={courseData.whatYouWillLearn}
               />
-              <CourseCurriculum />
+              <CourseCurriculum courseId={id} />
               <CourseInstructor instructor={courseData.instructor} />
               <CourseReviews rating={courseData.rating} reviews={courseData.reviews} />
             </div>

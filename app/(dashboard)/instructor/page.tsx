@@ -13,13 +13,17 @@ import { QuizBuilder } from "@/components/instructor/quiz-builder"
 import { StudentProgressTable } from "@/components/instructor/student-progress-table"
 import { Spinner } from "@/components/ui/spinner"
 import { Plus, BookOpen, Users, Video, ChevronRight } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
-interface Course { id: string; title: string; description: string; videos: { id: string; title: string; quiz?: { id: string } | null }[] }
-
-const DEMO_TEACHER_ID = "demo-teacher-1"
+interface Course { 
+  id: string
+  title: string
+  description: string | null
+  videos: { id: string; title: string; quiz?: { id: string } | null }[]
+}
 
 export default function InstructorPage() {
-  const { role } = useUser()
+  const { user, profile, isLoading: userLoading } = useUser()
   const [courses, setCourses] = useState<Course[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [newCourse, setNewCourse] = useState({ title: "", description: "" })
@@ -28,34 +32,108 @@ export default function InstructorPage() {
   const [creating, setCreating] = useState(false)
 
   const loadCourses = async () => {
-    const res = await fetch("/api/courses")
-    if (res.ok) { const d = await res.json(); setCourses(d) }
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
+
+    const supabase = createClient()
+    
+    const { data: coursesData } = await supabase
+      .from("courses")
+      .select(`
+        id,
+        title,
+        description
+      `)
+      .eq("teacher_id", user.id)
+      .order("created_at", { ascending: false })
+
+    if (coursesData) {
+      // For each course, fetch videos with their quizzes
+      const coursesWithVideos = await Promise.all(
+        coursesData.map(async (course) => {
+          const { data: videos } = await supabase
+            .from("videos")
+            .select(`
+              id,
+              title,
+              quizzes(id)
+            `)
+            .eq("course_id", course.id)
+            .order("sort_order", { ascending: true })
+
+          return {
+            ...course,
+            videos: videos?.map((v: any) => ({
+              id: v.id,
+              title: v.title,
+              quiz: v.quizzes?.[0] || null,
+            })) || [],
+          }
+        })
+      )
+
+      setCourses(coursesWithVideos)
+    }
     setIsLoading(false)
   }
 
-  useEffect(() => { loadCourses() }, [])
+  useEffect(() => { 
+    if (!userLoading && user) {
+      loadCourses() 
+    } else if (!userLoading) {
+      setIsLoading(false)
+    }
+  }, [user, userLoading])
 
   const createCourse = async () => {
-    if (!newCourse.title) return
+    if (!newCourse.title || !user) return
     setCreating(true)
-    const res = await fetch("/api/courses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newCourse, teacherId: DEMO_TEACHER_ID }),
-    })
-    if (res.ok) {
+
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from("courses")
+      .insert({
+        title: newCourse.title,
+        description: newCourse.description,
+        teacher_id: user.id,
+        is_published: false,
+      })
+
+    if (!error) {
       setNewCourse({ title: "", description: "" })
       await loadCourses()
     }
     setCreating(false)
   }
 
-  if (role !== "teacher") {
+  if (userLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner />
+      </div>
+    )
+  }
+
+  if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center">
-        <div className="text-4xl">🚫</div>
+        <h2 className="text-xl font-bold">Please Sign In</h2>
+        <p className="text-muted-foreground">You need to be logged in to access the instructor dashboard.</p>
+      </div>
+    )
+  }
+
+  if (profile?.role !== "teacher" && profile?.role !== "admin") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center">
         <h2 className="text-xl font-bold">Instructor Access Only</h2>
         <p className="text-muted-foreground">This area is restricted to instructor accounts.</p>
+        <p className="text-sm text-muted-foreground">
+          Your current role: <span className="font-medium">{profile?.role || "student"}</span>
+        </p>
       </div>
     )
   }
@@ -96,21 +174,30 @@ export default function InstructorPage() {
 
           {/* Existing Courses */}
           <div className="space-y-3">
-            {isLoading ? <div className="flex justify-center py-8"><Spinner /></div> : courses.map((c) => (
-              <Card key={c.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setSelectedCourse(c === selectedCourse ? null : c)}>
-                <CardContent className="flex items-center gap-4 p-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <BookOpen className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold">{c.title}</p>
-                    <p className="text-xs text-muted-foreground">{c.videos?.length ?? 0} videos</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </CardContent>
-              </Card>
-            ))}
-            {!isLoading && courses.length === 0 && <p className="text-center text-muted-foreground py-8">No courses yet. Create your first one above.</p>}
+            {isLoading ? (
+              <div className="flex justify-center py-8"><Spinner /></div>
+            ) : courses.length > 0 ? (
+              courses.map((c) => (
+                <Card 
+                  key={c.id} 
+                  className={`cursor-pointer transition-colors ${selectedCourse?.id === c.id ? "border-primary" : "hover:border-primary/50"}`}
+                  onClick={() => setSelectedCourse(c.id === selectedCourse?.id ? null : c)}
+                >
+                  <CardContent className="flex items-center gap-4 p-4">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <BookOpen className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold">{c.title}</p>
+                      <p className="text-xs text-muted-foreground">{c.videos?.length ?? 0} videos</p>
+                    </div>
+                    <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${selectedCourse?.id === c.id ? "rotate-90" : ""}`} />
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No courses yet. Create your first one above.</p>
+            )}
           </div>
         </TabsContent>
 
@@ -157,7 +244,7 @@ export default function InstructorPage() {
                   >
                     <option value="">-- Choose a video --</option>
                     {courses.flatMap((c) => c.videos?.map((v) => (
-                      <option key={v.id} value={v.id}>{c.title} → {v.title}</option>
+                      <option key={v.id} value={v.id}>{c.title} - {v.title}</option>
                     )) ?? [])}
                   </select>
                 </div>
@@ -177,7 +264,7 @@ export default function InstructorPage() {
               <CardDescription>Monitor how students are performing across all your courses.</CardDescription>
             </CardHeader>
             <CardContent>
-              <StudentProgressTable teacherId={DEMO_TEACHER_ID} />
+              <StudentProgressTable teacherId={user.id} />
             </CardContent>
           </Card>
         </TabsContent>

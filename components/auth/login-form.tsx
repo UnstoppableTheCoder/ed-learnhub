@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
-import { useUser } from "@/lib/user-context"
+import { createClient } from "@/lib/supabase/client"
 
 export function LoginForm() {
   const router = useRouter()
@@ -44,7 +44,6 @@ export function LoginForm() {
     return Object.keys(newErrors).length === 0
   }
 
-  const { setUser } = useUser()
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -54,28 +53,20 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email, password: formData.password }),
+      const supabase = createClient()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
       })
 
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || "Invalid credentials")
+      if (signInError) {
+        setError(signInError.message || "Invalid credentials")
         setIsLoading(false)
         return
       }
 
-      setUser({ name: data.user.name, email: data.user.email, role: data.user.role })
-      try {
-        localStorage.setItem("learnhub-user", JSON.stringify({
-          name: data.user.name, email: data.user.email, role: data.user.role,
-        }))
-      } catch {}
-
       router.push("/dashboard")
+      router.refresh()
     } catch {
       setError("Something went wrong. Please try again.")
       setIsLoading(false)

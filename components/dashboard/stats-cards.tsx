@@ -1,37 +1,91 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BookOpen, Clock, Trophy, Flame } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { useUser } from "@/lib/user-context"
 
-const stats = [
-  {
-    title: "Courses Enrolled",
-    value: "0",
-    change: "0 this month",
-    icon: BookOpen,
-  },
-  {
-    title: "Hours Learned",
-    value: "0",
-    change: "0 this week",
-    icon: Clock,
-  },
-  {
-    title: "Certificates",
-    value: "0",
-    change: "0 this month",
-    icon: Trophy,
-  },
-  {
-    title: "Day Streak",
-    value: "0",
-    change: "Start learning!",
-    icon: Flame,
-  },
-]
+interface Stats {
+  coursesEnrolled: number
+  hoursLearned: number
+  certificates: number
+  streakDays: number
+}
 
 export function StatsCards() {
+  const { user, profile } = useUser()
+  const [stats, setStats] = useState<Stats>({
+    coursesEnrolled: 0,
+    hoursLearned: 0,
+    certificates: 0,
+    streakDays: 0,
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
+      const supabase = createClient()
+
+      // Fetch enrollment count
+      const { count: enrollmentCount } = await supabase
+        .from("enrollments")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+
+      // Fetch certificates count
+      const { count: certificateCount } = await supabase
+        .from("certificates")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+
+      setStats({
+        coursesEnrolled: enrollmentCount || 0,
+        hoursLearned: profile?.total_hours_learned || 0,
+        certificates: certificateCount || 0,
+        streakDays: profile?.streak_days || 0,
+      })
+      setLoading(false)
+    }
+
+    fetchStats()
+  }, [user, profile])
+
+  const statItems = [
+    {
+      title: "Courses Enrolled",
+      value: loading ? "-" : stats.coursesEnrolled.toString(),
+      change: "Keep learning!",
+      icon: BookOpen,
+    },
+    {
+      title: "Hours Learned",
+      value: loading ? "-" : stats.hoursLearned.toFixed(1),
+      change: "Total time",
+      icon: Clock,
+    },
+    {
+      title: "Certificates",
+      value: loading ? "-" : stats.certificates.toString(),
+      change: "Earned",
+      icon: Trophy,
+    },
+    {
+      title: "Day Streak",
+      value: loading ? "-" : stats.streakDays.toString(),
+      change: stats.streakDays > 0 ? "Keep it up!" : "Start learning!",
+      icon: Flame,
+    },
+  ]
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
+      {statItems.map((stat) => (
         <Card key={stat.title}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">

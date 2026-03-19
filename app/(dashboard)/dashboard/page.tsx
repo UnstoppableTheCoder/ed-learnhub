@@ -9,13 +9,26 @@ import { UpcomingClasses } from "@/components/dashboard/upcoming-classes"
 import { useUser } from "@/lib/user-context"
 
 export default function DashboardPage() {
-  const { name } = useUser()
-  const firstName = name.split(" ")[0]
+  const { profile, isLoading } = useUser()
+  const firstName = profile?.name?.split(" ")[0] || "Learner"
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-28 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight uppercase">Welcome back, {firstName}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Welcome back, {firstName}</h1>
         <p className="text-muted-foreground">
           Continue your learning journey
         </p>
